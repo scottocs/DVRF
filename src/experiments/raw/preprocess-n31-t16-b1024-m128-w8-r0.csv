@@ -1,0 +1,16 @@
+experiment,n,t,batch,committee,workers,run,seed,metric,sample,value,unit
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,crs_local_updates,0,271.614334000,ms
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,crs_bytes,0,4768.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,polynomial_encodings,0,649.881833000,ms
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,registration,0,109.540375000,ms
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,registration_one_bytes,0,1740.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,validation,0,895.107584000,ms
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,setup_bytes,0,62056.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,setup_peak_rss_bytes,0,16613376.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,contribute,0,24375.607917000,ms
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,bundle_one_bytes,0,1540204.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,board_bytes,0,197146120.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,check_aggregate,0,111524.367000000,ms
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,record_bytes,0,197857422.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,image_bytes,0,672.000000000,bytes
+preprocess,31,16,1024,128,8,0,f0fec9b9ebdbdb79bc452b6bbe7f2d61f7a06ffe865b357c32a3fc19b8d2eca1,process_peak_rss_bytes,0,1103757312.000000000,bytes

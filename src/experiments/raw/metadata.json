@@ -1,0 +1,256 @@
+{
+  "utc_started": "2026-10-15T08:37:25Z",
+  "platform": "macOS-26.5.2-x86_64-i386-64bit-Mach-O",
+  "machine": "x86_64",
+  "cpu": "Apple M4",
+  "memory_bytes": 17179869184,
+  "physical_cores": 10,
+  "logical_cores": 10,
+  "hardware_source": "sysctl -n machdep.cpu.brand_string hw.memsize hw.physicalcpu hw.logicalcpu (verified on measurement host)",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: aarch64-apple-darwin\nrelease: 1.98.0\nLLVM version: 22.1.8\n",
+  "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+  "runs": 3,
+  "online_samples_per_process": 30,
+  "warmups": 3,
+  "execution": "serial processes; Setup/online: 1 thread; Preprocess sweeps: 8 workers; release thin LTO, codegen-units=1; no network",
+  "thresholds": "ceil((n+1)/3), (n+1)/2, ceil(2*(n+1)/3)",
+  "setup_reuse": "one validated registry per scale process; distinct immutable PP instances per threshold",
+  "preprocessing_implementation": "bounded member/input parallelism, exact projective proof equations, 16-input block normalization, parallel public context/table preparation and per-input aggregation, public-workload-adaptive multiplication windows capped at 8 bits; board-order selection remains sequential",
+  "preprocessing_worker_budget": "at most 8 active computation workers; member workers min(8,J), input workers floor(8/member_workers); worker creation/joining included",
+  "binary_sha256": "5123cdac78dfc9f1b5abb0256076799e3e9b4dcee4ebf14fec6d03acced08561",
+  "source_sha256": {
+    "src/bin/dvrf_bench.rs": "47e1c6bf1540800400c5a0cb2215618bbea79dd94d42b6957bf139751a393675",
+    "src/dvrf/algebra.rs": "d9befaca40186474b797b8bd3caff84d6230ee97eee7f8eb8a545565ba3e19ff",
+    "src/dvrf/basis_tests.rs": "7ca3e38f175298b6fb5aefcecf1119282589a03a65f2b2a68e4b018ec5d241fb",
+    "src/dvrf/crs.rs": "82f599d6ce517aecc3a1199612a52b403df7e36856a97c5d9a6fcc4b388dbbd6",
+    "src/dvrf/encoding.rs": "a2f69c03e74d973fdc25fe223268d852509570b069495b00d8ed1e20776196b1",
+    "src/dvrf/evaluation.rs": "b7e6504a6500dd4f91729c7b248c571834c8a243affb56f22b571d7783cc6b73",
+    "src/dvrf/fixed.rs": "82301d73726bc899ba523a58e43b4373c5da2a04ffb025b6993f6314d102fdc2",
+    "src/dvrf/mod.rs": "f1b8c3794daa1648033a8f63077838e2af72c1c236529f7d9e7019e887ee0f47",
+    "src/dvrf/parallel.rs": "14d91f25e2a602999400d33786d40386529520d5e244248f23d4e88419f3b18a",
+    "src/dvrf/preprocess.rs": "1227976a19b7e4a3bb8bcfaed2ea93385409343cebf83efa784aeb578108cb40",
+    "src/dvrf/setup.rs": "c9cf02b53a7629650732c1cd89748d4d983ba0148e4fe7f469d9fa6d2dd8a364",
+    "src/lib.rs": "48c3344f4ef02f7c9caecbf15924b22b6cf3c6e26c05bc9f9329d203860cdba1",
+    "tests/dvrf.rs": "12d54834a4ecbc26f39c753cca50c17fd6e320e7bce19470a5700db8a64394d9",
+    "Cargo.toml": "824c20b59a2ad1d9a81d416c058d9832c55302499d5000472a3137218e2983db",
+    "Cargo.lock": "605a0fe700abbb50fc6fd5ec6ff465bf85fd872ff66a873e0d9de4ad53f6716c"
+  },
+  "configurations": [
+    {
+      "experiment": "scale",
+      "n": 15,
+      "t": 8,
+      "batch": 1,
+      "committee": 4,
+      "workers": 1
+    },
+    {
+      "experiment": "scale",
+      "n": 31,
+      "t": 16,
+      "batch": 1,
+      "committee": 4,
+      "workers": 1
+    },
+    {
+      "experiment": "scale",
+      "n": 63,
+      "t": 32,
+      "batch": 1,
+      "committee": 4,
+      "workers": 1
+    },
+    {
+      "experiment": "scale",
+      "n": 127,
+      "t": 64,
+      "batch": 1,
+      "committee": 4,
+      "workers": 1
+    },
+    {
+      "experiment": "scale",
+      "n": 255,
+      "t": 128,
+      "batch": 1,
+      "committee": 4,
+      "workers": 1
+    },
+    {
+      "experiment": "scale",
+      "n": 511,
+      "t": 256,
+      "batch": 1,
+      "committee": 4,
+      "workers": 1
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 1,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 2,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 4,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 8,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 16,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 32,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 64,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 1,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 2,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 4,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 8,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 16,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 32,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 64,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 256,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 512,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 128,
+      "committee": 1024,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 256,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 512,
+      "committee": 128,
+      "workers": 8
+    },
+    {
+      "experiment": "preprocess",
+      "n": 31,
+      "t": 16,
+      "batch": 1024,
+      "committee": 128,
+      "workers": 8
+    }
+  ]
+}
