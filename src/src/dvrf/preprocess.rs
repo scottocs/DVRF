@@ -1,76 +1,26 @@
-//! Certified randomized images, authenticated bundles and first-complete selection.
+//! Certified randomized images and first-complete selection.
+//! Submission identities and the frozen board order are authenticated externally.
 use super::{
     algebra, encoding, fixed::ProjectiveImage, parallel, Error, Image, ImageProof, Result,
     ValidatedSetup,
 };
-use ark_bls12_381::{Bls12_381 as E, Fr, G1Affine, G1Projective as G1, G2Affine};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup, PrimeGroup};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
+use ark_bls12_381::{Fr, G1Projective as G1, G2Affine};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{UniformRand, Zero};
 use rand::{CryptoRng, RngCore};
 use sha2::{Digest, Sha256};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use zeroize::Zeroize;
 
-#[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct CommitteePublic {
-    pub id: u32,
-    pub key: G1Affine,
-}
-pub struct CommitteeKey {
-    id: u32,
-    scalar: Fr,
-    public: CommitteePublic,
-}
-impl Drop for CommitteeKey {
-    fn drop(&mut self) {
-        self.scalar.zeroize();
-    }
-}
-impl CommitteeKey {
-    pub fn generate<R: RngCore + CryptoRng>(id: u32, rng: &mut R) -> Result<Self> {
-        if id == 0 {
-            return Err(Error("invalid committee identity"));
-        }
-        let scalar = loop {
-            let s = Fr::rand(rng);
-            if !s.is_zero() {
-                break s;
-            }
-        };
-        let public = CommitteePublic {
-            id,
-            key: (G1::generator() * scalar).into_affine(),
-        };
-        Ok(Self { id, scalar, public })
-    }
-    pub fn public(&self) -> CommitteePublic {
-        self.public.clone()
-    }
-    /// Authentication does not certify that the signed image proofs are valid.
-    pub fn authenticate(
-        &self,
-        pp: &ValidatedSetup,
-        schedule: &Schedule,
-        bundle: &mut Bundle,
-    ) -> Result<()> {
-        if bundle.member != self.id || !schedule.header.committee.contains(&self.public) {
-            return Err(Error("authentication identity mismatch"));
-        }
-        let h = encoding::hash_to_g2(
-            &auth_message(pp, schedule, bundle),
-            b"SDVRF_AUTH_BLS12381G2_XMD:SHA-256_SSWU_RO_V1",
-        )?;
-        bundle.signature = (h * self.scalar).into_affine();
-        Ok(())
-    }
-}
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Header {
     pub application: Vec<u8>,
     pub release_policy: Vec<u8>,
     pub deadline: u64,
-    pub committee: Vec<CommitteePublic>,
+    pub committee: Vec<u32>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Schedule {
@@ -92,8 +42,8 @@ impl Schedule {
             }
         }
         let mut ids = HashSet::new();
-        for c in &self.header.committee {
-            if c.id == 0 || c.key.is_zero() || c.check().is_err() || !ids.insert(c.id) {
+        for &member in &self.header.committee {
+            if member == 0 || !ids.insert(member) {
                 return Err(Error("invalid committee registration"));
             }
         }
@@ -109,7 +59,6 @@ pub struct Contribution {
 pub struct Bundle {
     pub member: u32,
     pub entries: Vec<Contribution>,
-    pub signature: G2Affine,
 }
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct RecordData {
@@ -140,46 +89,68 @@ fn contexts_parallel(
 ) -> Result<Vec<InputContext>> {
     s.validate()?;
     let mut prefix = Vec::new();
-    encoding::field(&mut prefix, b"profile", b"SDVRF-BLS12381-v1");
+    encoding::field(&mut prefix, b"profile", b"SDVRF-BLS12381-v2");
     encoding::field(&mut prefix, b"setup", pp.encoded());
     encoding::field(&mut prefix, b"schedule", &encoding::bytes(s));
-    parallel::map(&s.labels, workers, |_, x| {
+    // SHA-256 prefixes include the full field length. Cache by label length
+    // so variable-length labels preserve the original framing byte for byte.
+    let mut states = HashMap::new();
+    for x in &s.labels {
+        states.entry(x.len()).or_insert_with(|| {
+            let len = prefix.len() + 8 + b"label".len() + 8 + x.len();
+            let mut tag = Sha256::new();
+            encoding::hash_field_header(&mut tag, b"domain", b"SDVRF-INPUT-ID-v1".len());
+            tag.update(b"SDVRF-INPUT-ID-v1");
+            encoding::hash_field_header(&mut tag, b"data", len);
+            tag.update(&prefix);
+            let mut output = Sha256::new();
+            encoding::hash_field_header(&mut output, b"domain", b"SDVRF-OUTPUT-v1".len());
+            output.update(b"SDVRF-OUTPUT-v1");
+            encoding::hash_field_header(&mut output, b"eta", len);
+            output.update(&prefix);
+            (tag, output)
+        });
+    }
+    let chunks: Vec<_> = s.labels.chunks(s.labels.len().div_ceil(workers)).collect();
+    parallel::map(&chunks, workers, |_, labels| {
+        // Hash-to-group and Merlin retain their original complete-message API.
+        // Reuse one buffer per worker rather than copying PP for every input.
         let mut eta = prefix.clone();
-        encoding::field(&mut eta, b"label", x);
-        let tag = encoding::digest(b"SDVRF-INPUT-ID-v1", &eta);
-        let h = encoding::hash_to_g2(&eta, b"SDVRF_GRP_BLS12381G2_XMD:SHA-256_SSWU_RO_V1")?;
-        let mut transcript = merlin::Transcript::new(b"SDVRF-IMAGE-FS-v1");
-        transcript.append_message(b"eta", &eta);
-        let mut output_context = Vec::new();
-        encoding::field(&mut output_context, b"domain", b"SDVRF-OUTPUT-v1");
-        encoding::field(&mut output_context, b"eta", &eta);
-        let mut output_prefix = Sha256::new();
-        output_prefix.update(output_context);
-        Ok(InputContext {
-            tag,
-            h,
-            transcript,
-            output_prefix,
-        })
+        labels
+            .iter()
+            .map(|x| {
+                eta.truncate(prefix.len());
+                encoding::field(&mut eta, b"label", x);
+                let suffix = &eta[prefix.len()..];
+                let (tag_state, output_state) = &states[&x.len()];
+                let mut tag = tag_state.clone();
+                tag.update(suffix);
+                let tag = tag.finalize().into();
+                let h = encoding::hash_to_g2(&eta, b"SDVRF_GRP_BLS12381G2_XMD:SHA-256_SSWU_RO_V1")?;
+                let mut transcript = merlin::Transcript::new(b"SDVRF-IMAGE-FS-v1");
+                transcript.append_message(b"eta", &eta);
+                let mut output_prefix = output_state.clone();
+                output_prefix.update(suffix);
+                Ok(InputContext {
+                    tag,
+                    h,
+                    transcript,
+                    output_prefix,
+                })
+            })
+            .collect::<Vec<_>>()
     })
     .into_iter()
+    .flatten()
     .collect()
-}
-fn auth_message(pp: &ValidatedSetup, s: &Schedule, b: &Bundle) -> Vec<u8> {
-    let mut message = Vec::new();
-    encoding::field(&mut message, b"setup", pp.encoded());
-    encoding::field(&mut message, b"schedule", &encoding::bytes(s));
-    encoding::field(&mut message, b"member", &b.member.to_le_bytes());
-    encoding::field(&mut message, b"entries", &encoding::bytes(&b.entries));
-    message
 }
 pub fn contribute<R: RngCore + CryptoRng>(
     pp: &ValidatedSetup,
     schedule: &Schedule,
-    key: &CommitteeKey,
+    member: u32,
     rng: &mut R,
 ) -> Result<Bundle> {
-    if !schedule.header.committee.contains(&key.public) {
+    if !schedule.header.committee.contains(&member) {
         return Err(Error("undesignated contributor"));
     }
     let inputs = contexts(pp, schedule)?;
@@ -189,7 +160,7 @@ pub fn contribute<R: RngCore + CryptoRng>(
         let mut nonce = std::array::from_fn(|_| Fr::rand(rng));
         let image = algebra::image(pp, input.h, &s);
         let commitment = algebra::image(pp, input.h, &nonce);
-        let c = algebra::image_challenge(&input.transcript, key.id, &image, &commitment);
+        let c = algebra::image_challenge(&input.transcript, member, &image, &commitment);
         let responses = std::array::from_fn(|i| nonce[i] + c * s[i]);
         s.zeroize();
         nonce.zeroize();
@@ -201,13 +172,7 @@ pub fn contribute<R: RngCore + CryptoRng>(
             },
         });
     }
-    let mut bundle = Bundle {
-        member: key.id,
-        entries,
-        signature: G2Affine::zero(),
-    };
-    key.authenticate(pp, schedule, &mut bundle)?;
-    Ok(bundle)
+    Ok(Bundle { member, entries })
 }
 fn construct(
     setup: Arc<ValidatedSetup>,
@@ -219,20 +184,10 @@ fn construct(
     let mut seen = HashSet::new();
     let mut included = Vec::new();
     for b in &board {
-        if b.check().is_err() {
-            return Err(Error("malformed board group element"));
-        }
-        let Some(member) = schedule.header.committee.iter().find(|m| m.id == b.member) else {
-            continue;
-        };
-        let h = encoding::hash_to_g2(
-            &auth_message(&setup, &schedule, b),
-            b"SDVRF_AUTH_BLS12381G2_XMD:SHA-256_SSWU_RO_V1",
-        )?;
-        if E::pairing(member.key, h) != E::pairing(G1::generator(), b.signature) {
+        // Bundle identities are authenticated by the external delivery layer.
+        if !schedule.header.committee.contains(&b.member) {
             continue;
         }
-        // Unauthenticated entries cannot suppress a member's genuine submission.
         if b.entries.len() != inputs.len() || !seen.insert(b.member) {
             continue;
         }
@@ -269,6 +224,9 @@ fn construct(
         included,
     })
 }
+/// The caller supplies externally authenticated submissions in finalized board order.
+/// Points must be generated by the group API or obtained through checked decoding;
+/// finalization does not repeat point-membership checks.
 pub fn finalize_record(
     setup: Arc<ValidatedSetup>,
     schedule: Schedule,
@@ -316,7 +274,7 @@ pub struct PreparedBatch {
     setup: Arc<ValidatedSetup>,
     schedule: Schedule,
     inputs: Vec<InputContext>,
-    bases: super::fixed::ImageBases,
+    bases: Arc<super::fixed::ImageBases>,
     hashes: Vec<super::fixed::Fixed<ark_bls12_381::G2Projective>>,
 }
 // Limit the number of unnormalized points and live proof coins per task.
@@ -345,7 +303,7 @@ impl PreparedBatch {
         }
         let inputs = contexts_parallel(&setup, &schedule, workers)?;
         let input_uses = schedule.header.committee.len().saturating_mul(3);
-        let bases = super::fixed::ImageBases::new(&setup, input_uses.saturating_mul(inputs.len()));
+        let bases = setup.image_bases(input_uses.saturating_mul(inputs.len()));
         let hashes = parallel::map(&inputs, workers, |_, i| {
             super::fixed::input_base(i.h, input_uses)
         });
@@ -357,25 +315,21 @@ impl PreparedBatch {
             hashes,
         })
     }
-    pub fn contribute<R: RngCore + CryptoRng>(
-        &self,
-        key: &CommitteeKey,
-        rng: &mut R,
-    ) -> Result<Bundle> {
-        self.contribute_parallel(key, rng, 1)
+    pub fn contribute<R: RngCore + CryptoRng>(&self, member: u32, rng: &mut R) -> Result<Bundle> {
+        self.contribute_parallel(member, rng, 1)
     }
     /// The RNG is consumed in input order before workers start, so proof
     /// bytes are independent of scheduling and worker count.
     pub fn contribute_parallel<R: RngCore + CryptoRng>(
         &self,
-        key: &CommitteeKey,
+        member: u32,
         rng: &mut R,
         workers: usize,
     ) -> Result<Bundle> {
         if workers == 0 {
             return Err(Error("at least one contribution worker required"));
         }
-        if !self.schedule.header.committee.contains(&key.public) {
+        if !self.schedule.header.committee.contains(&member) {
             return Err(Error("undesignated contributor"));
         }
         let coins: Vec<_> = self
@@ -409,7 +363,7 @@ impl PreparedBatch {
                     let commitment = normalized[2 * i + 1].clone();
                     let c = algebra::image_challenge(
                         &self.inputs[start + i].transcript,
-                        key.id,
+                        member,
                         &image,
                         &commitment,
                     );
@@ -428,36 +382,7 @@ impl PreparedBatch {
         .collect();
         // ProofCoins zeroizes every per-input secret vector on drop.
         drop(coins);
-        let mut bundle = Bundle {
-            member: key.id,
-            entries,
-            signature: G2Affine::zero(),
-        };
-        key.authenticate(&self.setup, &self.schedule, &mut bundle)?;
-        Ok(bundle)
-    }
-    fn authenticate_bundle(&self, b: &Bundle) -> Result<bool> {
-        if b.signature.check().is_err() {
-            return Err(Error("malformed board group element"));
-        }
-        let Some(member) = self
-            .schedule
-            .header
-            .committee
-            .iter()
-            .find(|m| m.id == b.member)
-        else {
-            return Ok(false);
-        };
-        let h = encoding::hash_to_g2(
-            &auth_message(&self.setup, &self.schedule, b),
-            b"SDVRF_AUTH_BLS12381G2_XMD:SHA-256_SSWU_RO_V1",
-        )?;
-        Ok(E::multi_pairing(
-            [member.key, (-G1::generator()).into_affine()],
-            [h, b.signature],
-        )
-        .is_zero())
+        Ok(Bundle { member, entries })
     }
     fn verify_contribution(&self, member: u32, index: usize, f: &Contribution) -> bool {
         let c = algebra::image_challenge(
@@ -467,19 +392,25 @@ impl PreparedBatch {
             &f.proof.commitment,
         );
         let lhs = self.bases.image(&self.hashes[index], &f.proof.responses);
+        let g1 = super::fixed::ChallengeMul::<ark_bls12_381::g1::Config>::new(c);
+        let g2 = super::fixed::ChallengeMul::<ark_bls12_381::g2::Config>::new(c);
         // Exact projective equality avoids affine inversions. Each of the
         // eight equations is still checked separately; no batch acceptance.
-        (0..2).all(|i| lhs.g1[i] == f.proof.commitment.g1[i] + f.image.g1[i] * c)
-            && (0..6).all(|i| lhs.g2[i] == f.proof.commitment.g2[i] + f.image.g2[i] * c)
+        (0..2).all(|i| lhs.g1[i] == f.proof.commitment.g1[i] + g1.mul(f.image.g1[i]))
+            && (0..6).all(|i| lhs.g2[i] == f.proof.commitment.g2[i] + g2.mul(f.image.g2[i]))
     }
-    /// Checks are parallel; first-complete selection follows board order.
+    /// The caller authenticates submission identities and finalizes the board order.
+    /// Points must be generated by the group API or obtained through checked decoding;
+    /// finalization does not repeat point-membership checks.
+    /// Checks are parallel; first-complete selection follows that order.
     pub fn finalize(self, board: Vec<Bundle>, workers: usize) -> Result<ValidatedRecord> {
         if workers == 0 {
             return Err(Error("at least one verification worker required"));
         }
-        let authenticated: Vec<_> =
-            parallel::map(&board, workers, |_, b| self.authenticate_bundle(b));
-        let authenticated: Vec<_> = authenticated.into_iter().collect::<Result<_>>()?;
+        let designated: Vec<_> = board
+            .iter()
+            .map(|b| self.schedule.header.committee.contains(&b.member))
+            .collect();
         let tasks: Vec<_> = board
             .iter()
             .enumerate()
@@ -493,29 +424,23 @@ impl PreparedBatch {
             let b = &board[member];
             let end = (start + IMAGE_CHUNK).min(b.entries.len());
             let entries = &b.entries[start..end];
-            // Check every submitted group element even for unauthenticated,
-            // incomplete, or duplicate bundles, preserving the serial API.
-            if entries.iter().any(|f| f.check().is_err()) {
-                return Err(Error("malformed board group element"));
-            }
-            let valid = authenticated[member]
+            let valid = designated[member]
                 && b.entries.len() == self.inputs.len()
                 && entries
                     .iter()
                     .enumerate()
                     .all(|(i, f)| self.verify_contribution(b.member, start + i, f));
-            Ok((member, valid))
+            (member, valid)
         });
         let mut valid = vec![true; board.len()];
-        for result in checked {
-            let (member, ok) = result?;
+        for (member, ok) in checked {
             valid[member] &= ok;
         }
         let mut seen = HashSet::new();
         let mut included = Vec::new();
         let mut selected = Vec::new();
         for (i, b) in board.iter().enumerate() {
-            if !authenticated[i] || b.entries.len() != self.inputs.len() || !seen.insert(b.member) {
+            if !designated[i] || b.entries.len() != self.inputs.len() || !seen.insert(b.member) {
                 continue;
             }
             if valid[i] {
@@ -554,5 +479,101 @@ impl PreparedBatch {
             inputs: self.inputs,
             included,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dvrf::{crs, finalize_setup, generate_key, Parameters};
+    use rand::{rngs::StdRng, SeedableRng};
+
+    fn setup() -> Arc<ValidatedSetup> {
+        let mut rng = StdRng::seed_from_u64(44017);
+        let (crs, _) = crs::local_ceremony(4, 2, &mut rng).unwrap();
+        let p = Parameters::new(crs, 2).unwrap();
+        let regs = (1..4)
+            .map(|i| generate_key(&p, i, &mut rng).unwrap().1)
+            .collect();
+        Arc::new(finalize_setup(p, regs).unwrap())
+    }
+
+    #[test]
+    fn cached_contexts_preserve_original_framing_hashes_and_challenges() {
+        let pp = setup();
+        let schedule = Schedule {
+            header: Header {
+                application: b"prefix-equivalence".to_vec(),
+                release_policy: vec![1, 2, 3],
+                deadline: 31,
+                committee: vec![1, 2],
+            },
+            labels: vec![
+                vec![],
+                vec![0],
+                vec![1],
+                vec![3; 63],
+                vec![4; 64],
+                vec![5; 65],
+                vec![6; 1000],
+            ],
+        };
+        for workers in [1, 2, 8] {
+            let inputs = contexts_parallel(&pp, &schedule, workers).unwrap();
+            for (x, input) in schedule.labels.iter().zip(inputs) {
+                // Independent original construction; do not reuse the optimized
+                // header helper or any cached SHA state in this reference.
+                let mut eta = Vec::new();
+                encoding::field(&mut eta, b"profile", b"SDVRF-BLS12381-v2");
+                encoding::field(&mut eta, b"setup", pp.encoded());
+                encoding::field(&mut eta, b"schedule", &encoding::bytes(&schedule));
+                encoding::field(&mut eta, b"label", x);
+                assert_eq!(input.tag, encoding::digest(b"SDVRF-INPUT-ID-v1", &eta));
+                assert_eq!(
+                    input.h,
+                    encoding::hash_to_g2(&eta, b"SDVRF_GRP_BLS12381G2_XMD:SHA-256_SSWU_RO_V1")
+                        .unwrap()
+                );
+                let mut reference = merlin::Transcript::new(b"SDVRF-IMAGE-FS-v1");
+                reference.append_message(b"eta", &eta);
+                let mut actual = input.transcript.clone();
+                assert_eq!(
+                    encoding::challenge(&mut actual),
+                    encoding::challenge(&mut reference)
+                );
+                let mut output = Vec::new();
+                encoding::field(&mut output, b"domain", b"SDVRF-OUTPUT-v1");
+                encoding::field(&mut output, b"eta", &eta);
+                let mut reference = Sha256::new();
+                reference.update(output);
+                // Verify the cached state remains equivalent after more data.
+                reference.update(b"synthetic-output");
+                let mut actual = input.output_prefix;
+                actual.update(b"synthetic-output");
+                assert_eq!(actual.finalize(), reference.finalize());
+            }
+        }
+    }
+
+    #[test]
+    fn public_table_cache_is_shared_only_within_the_same_setup_and_window() {
+        let pp = setup();
+        let first = pp.image_bases(128);
+        let same = pp.image_bases(128);
+        assert!(Arc::ptr_eq(&first, &same));
+        let different_window = pp.image_bases(4096);
+        assert!(!Arc::ptr_eq(&first, &different_window));
+        let changed = pp.with_threshold(1).unwrap();
+        let different_setup = changed.image_bases(128);
+        assert!(!Arc::ptr_eq(&first, &different_setup));
+        let h = encoding::hash_to_g2(b"cache-test", b"test-domain").unwrap();
+        let h = super::super::fixed::input_base(h, 128);
+        let s = [Fr::from(1u64); 5];
+        let image = first.image(&h, &s);
+        let other = different_window.image(&h, &s);
+        assert_eq!(image.g1, other.g1);
+        assert_eq!(image.g2, other.g2);
+        // Changing T changes a matrix base; the new setup must not reuse it.
+        assert_ne!(image.g1, different_setup.image(&h, &s).g1);
     }
 }

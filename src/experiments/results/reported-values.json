@@ -1,0 +1,26 @@
+[
+  {
+    "inputs": 1024,
+    "contributors": 128,
+    "contribute_seconds": 19.757963917,
+    "finalize_seconds": 44.406056958,
+    "contribute_ms_per_input": 19.294886637695313,
+    "finalize_ms_per_input": 43.365289998046876
+  },
+  {
+    "inputs": 128,
+    "contributors": 1024,
+    "contribute_seconds": 15.698553625,
+    "finalize_seconds": 41.858078500000005,
+    "contribute_ms_per_input": 122.6449501953125,
+    "finalize_ms_per_input": 327.01623828125
+  },
+  {
+    "inputs": 128,
+    "contributors": 256,
+    "contribute_seconds": 4.5614321250000005,
+    "finalize_seconds": 10.612874209,
+    "contribute_ms_per_input": 35.6361884765625,
+    "finalize_ms_per_input": 82.9130797578125
+  }
+]

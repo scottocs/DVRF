@@ -13,7 +13,7 @@ fn fixture(
     Arc<ValidatedSetup>,
     Vec<SecretKey>,
     Schedule,
-    Vec<CommitteeKey>,
+    Vec<u32>,
     ValidatedRecord,
 ) {
     let mut rng = StdRng::seed_from_u64(8823 + n as u64 + t as u64);
@@ -27,15 +27,13 @@ fn fixture(
         regs.push(pk);
     }
     let pp = Arc::new(finalize_setup(p, regs).unwrap());
-    let committee: Vec<_> = (1..=2)
-        .map(|i| CommitteeKey::generate(i, &mut rng).unwrap())
-        .collect();
+    let committee: Vec<_> = (1..=2).collect();
     let schedule = Schedule {
         header: Header {
             application: b"test-dvrf".to_vec(),
             release_policy: b"round schedule".to_vec(),
             deadline: 42,
-            committee: committee.iter().map(CommitteeKey::public).collect(),
+            committee: committee.clone(),
         },
         labels: (0..batch)
             .map(|i| (i as u64).to_le_bytes().to_vec())
@@ -43,7 +41,7 @@ fn fixture(
     };
     let board = committee
         .iter()
-        .map(|key| contribute(&pp, &schedule, key, &mut rng).unwrap())
+        .map(|key| contribute(&pp, &schedule, *key, &mut rng).unwrap())
         .collect();
     let record = finalize_record(pp.clone(), schedule.clone(), board).unwrap();
     (pp, keys, schedule, committee, record)
@@ -168,7 +166,7 @@ fn public_setup_and_degree_cap_are_validated() {
 }
 #[test]
 fn authenticated_image_proofs_selection_and_record_pinning() {
-    let (pp, _, schedule, committee, record) = fixture(3, 2, 2);
+    let (pp, _, schedule, _, record) = fixture(3, 2, 2);
     let original = record.data().clone();
     assert!(validate_record(pp.clone(), decode(&encode(&original)).unwrap()).is_ok());
     let mut bad = original.clone();
@@ -179,9 +177,7 @@ fn authenticated_image_proofs_selection_and_record_pinning() {
     assert!(validate_record(pp.clone(), bad).is_ok()); // order changes are different authenticated board instances, not output choices
     let mut tampered = original.board[0].clone();
     tampered.entries[0].proof.responses[4] += Fr::one();
-    committee[0]
-        .authenticate(&pp, &schedule, &mut tampered)
-        .unwrap();
+
     assert!(finalize_record(pp.clone(), schedule.clone(), vec![tampered.clone()]).is_err());
     let record = finalize_record(
         pp.clone(),
@@ -235,15 +231,15 @@ fn cached_parallel_preprocessing_matches_the_original_checks() {
         let mut r1 = StdRng::seed_from_u64(700);
         let mut r2 = StdRng::seed_from_u64(700);
         assert_eq!(
-            contribute(&pp, &schedule, key, &mut r1).unwrap(),
-            plan.contribute(key, &mut r2).unwrap()
+            contribute(&pp, &schedule, *key, &mut r1).unwrap(),
+            plan.contribute(*key, &mut r2).unwrap()
         );
     }
     let a = plan.finalize(original.data().board.clone(), 3).unwrap();
     assert_eq!(a.data(), original.data());
     let mut bad = original.data().board[0].clone();
     bad.entries[0].proof.responses[0] += Fr::one();
-    committee[0].authenticate(&pp, &schedule, &mut bad).unwrap();
+
     let board = vec![
         bad,
         original.data().board[0].clone(),
@@ -256,12 +252,19 @@ fn cached_parallel_preprocessing_matches_the_original_checks() {
         .unwrap();
     assert_eq!(slow.data(), fast.data());
     assert_eq!(fast.included(), &[2]);
-    let mut malformed = original.data().board.clone();
-    malformed[0].entries[0].image.g1[0].x = ark_bls12_381::Fq::from(0u64);
-    assert!(PreparedBatch::new(pp.clone(), schedule.clone())
-        .unwrap()
-        .finalize(malformed, 2)
-        .is_err());
+    // Malformed external points are rejected at the decoding boundary, before
+    // either finalization path accepts typed group elements.
+    let mut malformed = original.data().board[0].clone();
+    malformed.entries[0].image.g1[0] = ark_bls12_381::G1Affine::new_unchecked(
+        ark_bls12_381::Fq::from(0u64),
+        ark_bls12_381::Fq::from(0u64),
+    );
+    let mut raw = Vec::new();
+    ark_serialize::CanonicalSerialize::serialize_uncompressed(&malformed, &mut raw).unwrap();
+    assert!(
+        <Bundle as ark_serialize::CanonicalDeserialize>::deserialize_uncompressed(&raw[..])
+            .is_err()
+    );
     assert!(PreparedBatch::new(pp, schedule)
         .unwrap()
         .finalize(vec![], 1)
@@ -276,9 +279,9 @@ fn preprocessing_chunks_workers_and_all_proof_coordinates_match_serial() {
         for key in &committee {
             let mut expected_rng = StdRng::seed_from_u64(916);
             let mut actual_rng = StdRng::seed_from_u64(916);
-            let expected = contribute(&pp, &schedule, key, &mut expected_rng).unwrap();
+            let expected = contribute(&pp, &schedule, *key, &mut expected_rng).unwrap();
             let actual = plan
-                .contribute_parallel(key, &mut actual_rng, workers)
+                .contribute_parallel(*key, &mut actual_rng, workers)
                 .unwrap();
             assert_eq!(encode(&expected), encode(&actual));
         }
@@ -310,7 +313,7 @@ fn preprocessing_chunks_workers_and_all_proof_coordinates_match_serial() {
             proof.commitment.g2[coordinate - 2] =
                 (proof.commitment.g2[coordinate - 2] + G2::generator()).into_affine();
         }
-        committee[0].authenticate(&pp, &schedule, &mut bad).unwrap();
+
         let board = vec![
             bad,
             original.data().board[0].clone(),
@@ -326,9 +329,7 @@ fn preprocessing_chunks_workers_and_all_proof_coordinates_match_serial() {
     }
     let mut incomplete = original.data().board[0].clone();
     incomplete.entries.pop();
-    committee[0]
-        .authenticate(&pp, &schedule, &mut incomplete)
-        .unwrap();
+
     let board = vec![
         incomplete,
         original.data().board[0].clone(),
@@ -351,7 +352,7 @@ fn preprocessing_chunks_workers_and_all_proof_coordinates_match_serial() {
     assert!(PreparedBatch::new_with_workers(pp.clone(), schedule.clone(), 0).is_err());
     let plan = PreparedBatch::new(pp, schedule).unwrap();
     assert!(plan
-        .contribute_parallel(&committee[0], &mut StdRng::seed_from_u64(1), 0)
+        .contribute_parallel(committee[0], &mut StdRng::seed_from_u64(1), 0)
         .is_err());
     assert!(plan.finalize(vec![], 0).is_err());
 }
@@ -368,7 +369,7 @@ fn changed_threshold_is_a_new_validated_setup_and_input_instance() {
         let mut rng = StdRng::seed_from_u64(813);
         let board = committee
             .iter()
-            .map(|key| contribute(&changed, &schedule, key, &mut rng).unwrap())
+            .map(|key| contribute(&changed, &schedule, *key, &mut rng).unwrap())
             .collect();
         let r = finalize_record(changed.clone(), schedule.clone(), board).unwrap();
         let shares: Vec<_> = keys[..t]
@@ -387,4 +388,28 @@ fn changed_threshold_is_a_new_validated_setup_and_input_instance() {
     assert!(pp.with_threshold(4).is_err());
     let (_, foreign, _, _, _) = fixture(7, 3, 1);
     assert!(foreign[0].for_setup(&pp).is_err());
+}
+
+#[test]
+fn signature_free_bundles_keep_membership_and_proof_identity_binding() {
+    let (pp, _, schedule, _, record) = fixture(3, 2, 2);
+    assert_eq!(encode(&record.data().board[0]).len(), 12 + 2 * 1504);
+    let mut relabeled = record.data().board[0].clone();
+    relabeled.member = 2;
+    assert!(finalize_record(pp.clone(), schedule.clone(), vec![relabeled]).is_err());
+    let mut unknown = record.data().board[0].clone();
+    unknown.member = 777;
+    let mut board = vec![unknown];
+    board.extend(record.data().board.clone());
+    assert_eq!(
+        finalize_record(pp.clone(), schedule.clone(), board)
+            .unwrap()
+            .included(),
+        &[1, 2]
+    );
+    for members in [vec![0, 1], vec![1, 1]] {
+        let mut invalid = schedule.clone();
+        invalid.header.committee = members;
+        assert!(PreparedBatch::new(pp.clone(), invalid).is_err());
+    }
 }

@@ -16,7 +16,7 @@ use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::{UniformRand, Zero};
 use rand::{CryptoRng, RngCore};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use zeroize::Zeroize;
 
 pub(crate) struct Bases {
@@ -72,6 +72,7 @@ pub struct ValidatedSetup {
     pub(crate) public: SetupData,
     pub(crate) encoded: Vec<u8>,
     pub(crate) id: [u8; 32],
+    image_bases: [OnceLock<Arc<super::fixed::ImageBases>>; 9],
 }
 impl Parameters {
     pub fn new(crs: Crs, threshold: usize) -> Result<Self> {
@@ -261,6 +262,7 @@ pub fn finalize_setup(
         public,
         encoded,
         id,
+        image_bases: std::array::from_fn(|_| OnceLock::new()),
     })
 }
 pub fn validate_setup(data: SetupData) -> Result<ValidatedSetup> {
@@ -299,10 +301,17 @@ impl ValidatedSetup {
             public,
             encoded,
             id,
+            image_bases: std::array::from_fn(|_| OnceLock::new()),
         })
     }
     pub fn data(&self) -> &SetupData {
         &self.public
+    }
+    pub(crate) fn image_bases(&self, uses: usize) -> Arc<super::fixed::ImageBases> {
+        let window = super::fixed::Fixed::<G1>::window_for_uses(uses);
+        self.image_bases[window]
+            .get_or_init(|| Arc::new(super::fixed::ImageBases::new(self, uses)))
+            .clone()
     }
     pub fn slots(&self) -> usize {
         self.parameters.slots()

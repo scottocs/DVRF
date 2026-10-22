@@ -30,9 +30,6 @@ impl Image {
             *p = (*p + other.g2[i]).into_affine();
         }
     }
-    pub(crate) fn valid(&self) -> bool {
-        self.check().is_ok()
-    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ImageProof {
@@ -91,9 +88,6 @@ pub(crate) fn verify_image(
     f: &Image,
     p: &ImageProof,
 ) -> bool {
-    if !f.valid() || p.check().is_err() {
-        return false;
-    }
     let c = image_challenge(context, id, f, &p.commitment);
     let lhs = image(pp, h, &p.responses);
     (0..2).all(|i| lhs.g1[i] == (p.commitment.g1[i] + f.g1[i] * c).into_affine())

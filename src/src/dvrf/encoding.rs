@@ -20,6 +20,12 @@ pub(crate) fn field(out: &mut Vec<u8>, name: &[u8], data: &[u8]) {
     out.extend_from_slice(&(data.len() as u64).to_le_bytes());
     out.extend_from_slice(data);
 }
+/// Absorb exactly the header used by `field`, without allocating its payload.
+pub(crate) fn hash_field_header(out: &mut Sha256, name: &[u8], len: usize) {
+    out.update((name.len() as u64).to_le_bytes());
+    out.update(name);
+    out.update((len as u64).to_le_bytes());
+}
 pub(crate) fn digest(domain: &[u8], data: &[u8]) -> [u8; 32] {
     let mut b = Vec::new();
     field(&mut b, b"domain", domain);

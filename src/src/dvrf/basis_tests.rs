@@ -8,7 +8,7 @@ use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain,
 fn fixed_scalar_windows_match_native_multiplication_at_boundaries() {
     let g = G1Projective::generator();
     let h = G2Projective::generator();
-    for uses in [1, 128, 384, 4096, usize::MAX] {
+    for uses in [1, 32, 64, 128, 256, 512, 1024, 4096, usize::MAX] {
         let a = super::fixed::Fixed::for_uses(g, uses);
         let b = super::fixed::Fixed::for_uses(h, uses);
         for s in [
@@ -19,6 +19,34 @@ fn fixed_scalar_windows_match_native_multiplication_at_boundaries() {
         ] {
             assert_eq!(a.mul(&s), g * s);
             assert_eq!(b.mul(&s), h * s);
+        }
+    }
+}
+
+#[test]
+fn shared_public_challenge_multiplication_matches_native_on_both_groups() {
+    use super::fixed::ChallengeMul;
+    use ark_bls12_381::{g1, g2};
+    use ark_std::UniformRand;
+    use rand::{rngs::StdRng, SeedableRng};
+    let mut rng = StdRng::seed_from_u64(98131);
+    let mut scalars = vec![
+        Fr::from(0u64),
+        Fr::one(),
+        -Fr::one(),
+        Fr::from(2u64).pow([254]),
+    ];
+    scalars.extend((0..64).map(|_| Fr::rand(&mut rng)));
+    let g = G1Projective::rand(&mut rng).into_affine();
+    let h = G2Projective::rand(&mut rng).into_affine();
+    for c in scalars {
+        let a = ChallengeMul::<g1::Config>::new(c);
+        let b = ChallengeMul::<g2::Config>::new(c);
+        for base in [g, -g, ark_bls12_381::G1Affine::identity()] {
+            assert_eq!(a.mul(base), base * c);
+        }
+        for base in [h, -h, ark_bls12_381::G2Affine::identity()] {
+            assert_eq!(b.mul(base), base * c);
         }
     }
 }
@@ -103,13 +131,13 @@ fn projection_recovers_the_independently_known_target() {
         .map(|i| generate_key(&params, i, &mut rng).unwrap())
         .unzip();
     let pp = Arc::new(finalize_setup(params, registrations).unwrap());
-    let key = CommitteeKey::generate(1, &mut rng).unwrap();
+    let key = 1u32;
     let schedule = Schedule {
         header: Header {
             application: b"target-oracle-test".to_vec(),
             release_policy: vec![],
             deadline: 17,
-            committee: vec![key.public()],
+            committee: vec![key],
         },
         labels: vec![b"input".to_vec()],
     };
@@ -117,16 +145,16 @@ fn projection_recovers_the_independently_known_target() {
     let mut bundles = Vec::new();
     // Known coins are test-only. Two accepted images must add their fifth coins.
     for _ in 0..2 {
-        let member = CommitteeKey::generate((bundles.len() + 1) as u32, &mut rng).unwrap();
+        let member = (bundles.len() + 1) as u32;
         bundles.push((
             member,
             std::array::from_fn::<_, 5, _>(|_| Fr::rand(&mut rng)),
         ));
     }
     let mut schedule = schedule;
-    schedule.header.committee = bundles.iter().map(|(k, _)| k.public()).collect();
-    // Rebuild the context because the committee credentials are part of eta.
-    let seed_bundle = contribute(&pp, &schedule, &bundles[0].0, &mut rng).unwrap();
+    schedule.header.committee = bundles.iter().map(|(k, _)| *k).collect();
+    // Rebuild the context because the committee identities are part of eta.
+    let seed_bundle = contribute(&pp, &schedule, bundles[0].0, &mut rng).unwrap();
     let seed_record = finalize_record(pp.clone(), schedule.clone(), vec![seed_bundle]).unwrap();
     let context = seed_record.input(0).unwrap();
     let mut board = Vec::new();
@@ -134,9 +162,9 @@ fn projection_recovers_the_independently_known_target() {
         let nonce = std::array::from_fn(|_| Fr::rand(&mut rng));
         let f = image(&pp, context.h, &s);
         let commitment = image(&pp, context.h, &nonce);
-        let id = member.public().id;
+        let id = member;
         let c = image_challenge(&context.transcript, id, &f, &commitment);
-        let mut b = Bundle {
+        let b = Bundle {
             member: id,
             entries: vec![Contribution {
                 image: f,
@@ -145,9 +173,7 @@ fn projection_recovers_the_independently_known_target() {
                     responses: std::array::from_fn(|i| nonce[i] + c * s[i]),
                 },
             }],
-            signature: G2Projective::default().into_affine(),
         };
-        member.authenticate(&pp, &schedule, &mut b).unwrap();
         target_exponent += s[4];
         board.push(b);
     }

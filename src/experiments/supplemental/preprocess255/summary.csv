@@ -1,3 +1,0 @@
-metric,unit,processes,median,minimum,maximum,per_input_median
-contribute,ms,3,4710.570084,4377.894917,4741.087291,36.80132878125
-check_aggregate,ms,3,19019.400959,18734.7495,19199.868792,148.5890699921875

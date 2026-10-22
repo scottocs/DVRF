@@ -3,8 +3,8 @@
 use ark_serialize::CanonicalSerialize;
 use rand::{rngs::StdRng, seq::SliceRandom, RngCore, SeedableRng};
 use sdvrf::dvrf::{
-    self, crs, CommitteeKey, Header, Parameters, PreparedBatch, Schedule, SecretKey,
-    ValidatedRecord, ValidatedSetup,
+    self, crs, Header, Parameters, PreparedBatch, Schedule, SecretKey, ValidatedRecord,
+    ValidatedSetup,
 };
 use sha2::{Digest, Sha256};
 use std::{hint::black_box, io::Write, sync::Arc, time::Instant};
@@ -90,15 +90,13 @@ fn rss() -> usize {
     }
 }
 fn prepare(pp: Arc<ValidatedSetup>, r: &Reporter, rng: &mut StdRng) -> ValidatedRecord {
-    let committee: Vec<_> = (1..=r.m)
-        .map(|i| CommitteeKey::generate(i as u32, rng).unwrap())
-        .collect();
+    let committee: Vec<_> = (1..=r.m).map(|i| i as u32).collect();
     let schedule = Schedule {
         header: Header {
-            application: b"DVRF-core-benchmark-v2".to_vec(),
+            application: b"DVRF-core-benchmark-v3".to_vec(),
             release_policy: b"externally-authenticated-release".to_vec(),
             deadline: 1_800_000_000,
-            committee: committee.iter().map(CommitteeKey::public).collect(),
+            committee: committee.clone(),
         },
         labels: (0..r.batch)
             .map(|i| (i as u64).to_le_bytes().to_vec())
@@ -129,7 +127,7 @@ fn prepare(pp: Arc<ValidatedSetup>, r: &Reporter, rng: &mut StdRng) -> Validated
                             .zip(seeds)
                             .map(|(key, seed)| {
                                 plan.contribute_parallel(
-                                    key,
+                                    *key,
                                     &mut StdRng::from_seed(*seed),
                                     input_workers,
                                 )
@@ -147,9 +145,7 @@ fn prepare(pp: Arc<ValidatedSetup>, r: &Reporter, rng: &mut StdRng) -> Validated
     });
     r.bytes("bundle_one_bytes", encoded_len(&board[0]));
     r.bytes("board_bytes", encoded_len(&board));
-    let record = r.time("check_aggregate", || {
-        plan.finalize(board, r.workers).unwrap()
-    });
+    let record = r.time("finalize", || plan.finalize(board, r.workers).unwrap());
     assert_eq!(record.included().len(), r.m);
     r.bytes("record_bytes", encoded_len(record.data()));
     r.bytes("image_bytes", encoded_len(&record.data().images[0]));
@@ -211,7 +207,7 @@ fn main() {
             && ["scale", "preprocess", "preprocess-sweep"].contains(&args[8].as_str())
     );
     let mut hash = Sha256::new();
-    hash.update(b"SDVRF-experiment-v2");
+    hash.update(b"SDVRF-experiment-v3");
     hash.update(args[8].as_bytes());
     for x in [n, t, batch, m, run] {
         hash.update((x as u64).to_le_bytes());
@@ -281,14 +277,17 @@ fn main() {
             row.batch = batch;
             row.m = committee;
             let mut hash = Sha256::new();
-            hash.update(b"SDVRF-preprocessing-sweep-v1");
+            hash.update(b"SDVRF-preprocessing-sweep-v2");
             for x in [n, t, batch, committee, run] {
                 hash.update((x as u64).to_le_bytes());
             }
             let seed: [u8; 32] = hash.finalize().into();
             row.seed = seed.iter().map(|v| format!("{v:02x}")).collect();
             let mut input_rng = StdRng::from_seed(seed);
-            let record = prepare(pp.clone(), &row, &mut input_rng);
+            // Identical validated PP with empty caches: all table preparation
+            // is charged to this batch, including on repeated configurations.
+            let fresh = Arc::new(pp.with_threshold(t).unwrap());
+            let record = prepare(fresh, &row, &mut input_rng);
             for input in [0, batch / 2, batch - 1] {
                 let shares: Vec<_> = keys[..t]
                     .iter()

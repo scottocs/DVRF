@@ -17,8 +17,8 @@ mod setup;
 pub use algebra::{Image, ImageProof, Witness};
 pub use evaluation::{combine, partial_eval, partial_verify, verify, Evaluation, Share};
 pub use preprocess::{
-    contribute, finalize_record, validate_record, Bundle, CommitteeKey, CommitteePublic,
-    Contribution, Header, PreparedBatch, RecordData, Schedule, ValidatedRecord,
+    contribute, finalize_record, validate_record, Bundle, Contribution, Header, PreparedBatch,
+    RecordData, Schedule, ValidatedRecord,
 };
 pub use setup::{
     finalize_setup, generate_key, validate_setup, Parameters, Registration, SecretKey, SetupData,
