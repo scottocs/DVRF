@@ -83,7 +83,7 @@ def read_process(path, config, run, metadata):
                  'bundle_one_bytes': 12 + 1504 * b, 'board_bytes': 8 + m * (12 + 1504 * b),
                  'record_bytes': 142 + 16 * m + 688 * b + 1504 * m * b,
                  'image_bytes': 672, 'share_bytes': 96, 'share_wire_bytes': 132,
-                 'proof_bytes': 480, 'evaluation_wire_bytes': 544, 'correctness_checks': 3}
+                 'proof_bytes': 480, 'evaluation_wire_bytes': 1088, 'correctness_checks': 3}
         if metric in sizes and value != sizes[metric]:
             raise ValueError(f'size or correctness-check mismatch: {path}, {metric}')
         groups[(mode, threshold, b, m, metric)].append((int(row['sample']), value, unit))
@@ -200,10 +200,12 @@ def main():
     finalization = prep(128, 256, 'finalize')[0]
     # Replace existing numeric slots only; preserve surrounding paper prose.
     slots = [
-        (r'(amortized per-input costs of )[\d.]+(\\,ms for generation and )[\d.]+(\\,ms for finalization)',
+        (r'(amortized costs per DVRF call of )[\d.]+((?:\\,|\s+)ms for generation and )[\d.]+((?:\\,|\s+)ms for finalization)',
          lambda m: f'{m[1]}{generation / 128:.2f}{m[2]}{finalization / 128:.2f}{m[3]}'),
-        (r'(share generation and final verification take approximately )[\d.]+( and )[\d.]+( milliseconds)',
+        (r'(share generation and final verification take approximately )[\d.]+((?:\\,|\s+)ms and )[\d.]+((?:\\,|\s+)ms)',
          lambda m: f'{m[1]}{scale(511, 256, "partial_eval")[0]:.2f}{m[2]}{scale(511, 256, "verify")[0]:.2f}{m[3]}'),
+        (r'(generating an evaluation share, checking one share, and verifying a final output take approximately \$)[\d.]+(\$, \$)[\d.]+(\$, and \$)[\d.]+(\$\\,ms)',
+         lambda m: f'{m[1]}{scale(511, 256, "partial_eval")[0]:.2f}{m[2]}{scale(511, 256, "partial_verify")[0]:.2f}{m[3]}{scale(511, 256, "verify")[0]:.2f}{m[4]}'),
         (r'(With 1024 inputs and 128 contributors, .*?take )[\d.]+(\\,s and )[\d.]+(\\,s, respectively)',
          lambda m: f'{m[1]}{prep(1024, 128, "contribute")[0] / 1000:.2f}{m[2]}{prep(1024, 128, "finalize")[0] / 1000:.2f}{m[3]}'),
         (r'(With 128 inputs and 1024 contributors, they take )[\d.]+(\\,s and )[\d.]+(\\,s)',

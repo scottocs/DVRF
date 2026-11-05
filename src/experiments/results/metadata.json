@@ -1,5 +1,5 @@
 {
-  "utc_started": "2026-10-22T08:16:59Z",
+  "utc_started": "2026-11-02T02:16:46Z",
   "platform": "macOS-26.5.2-x86_64-i386-64bit-Mach-O",
   "cpu": "Apple M4",
   "memory_bytes": 17179869184,
@@ -9,27 +9,27 @@
   "samples": 30,
   "warmups": 3,
   "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: aarch64-apple-darwin\nrelease: 1.98.0\nLLVM version: 22.1.8\n",
-  "binary_sha256": "1b46d9c36703046852c5cd05124e89cc413f2142c07aab239dc3b34bbd24ed1d",
+  "binary_sha256": "6f6a19eee8486af7b78170845ba11604b177687c9319fbb1fd37973446c434a3",
   "source_sha256": {
     "src/bin/dvrf_bench.rs": "63b6b580f63c4b33ee669857fa1d60e7a3b81b466d1affc677d71cf4a658337c",
     "src/dvrf/algebra.rs": "e40df38d36c8cdf97d422c358f5e1f4b321786e72db35fcebc2f592398dde398",
-    "src/dvrf/basis_tests.rs": "6f4fc0ad420a6036208d1f565630d721b40e5eb5e2c7ff0389239644735091dc",
+    "src/dvrf/basis_tests.rs": "2d832f1fdf1f3e7f1c2df39f2359e3aacb282b543e9e641d34794fc49b4aaaa7",
     "src/dvrf/crs.rs": "82f599d6ce517aecc3a1199612a52b403df7e36856a97c5d9a6fcc4b388dbbd6",
     "src/dvrf/encoding.rs": "c2c58ed3020a5a28700b9d6dfb0589de7f0a4a904ccff595abf70ca10860145b",
-    "src/dvrf/evaluation.rs": "b7e6504a6500dd4f91729c7b248c571834c8a243affb56f22b571d7783cc6b73",
+    "src/dvrf/evaluation.rs": "21dddf3e89c2db7095241dc2ffd6b5949e8c5735c3b52db8bbbac56c2ea10549",
     "src/dvrf/fixed.rs": "e347e8957d4a1e539ee8899d17e09a42167bcc8ebbe79442b6a4d6119ed0fee1",
     "src/dvrf/mod.rs": "51a042de25eb3bcafea0d763b28e73a1b50aecc0be624c947fdd630a43b9ce3a",
     "src/dvrf/parallel.rs": "14d91f25e2a602999400d33786d40386529520d5e244248f23d4e88419f3b18a",
-    "src/dvrf/preprocess.rs": "8fc3ce068424eeb1c9e64585c457ae927b1a2b8264d13d2ec0a57b74dc36f602",
+    "src/dvrf/preprocess.rs": "e87db68bf08aeb0c5a265df7fcfd17e50db3ecd506ed03c53a8f6c534ff36715",
     "src/dvrf/setup.rs": "5de19cfd43b2a3da4de913168eb9b5fcc3572f899fa887113e40fc07a4e15600",
     "src/lib.rs": "48c3344f4ef02f7c9caecbf15924b22b6cf3c6e26c05bc9f9329d203860cdba1",
-    "tests/dvrf.rs": "fc21bec71cd9241c0af2c1ab0548fbc4c9897704ee5fee234678dfa0f7765c19",
+    "tests/dvrf.rs": "c531c58b889033eec400dff83ac753545abeef7e148b855cb2dabe6647d3d29f",
     "Cargo.toml": "824c20b59a2ad1d9a81d416c058d9832c55302499d5000472a3137218e2983db",
     "Cargo.lock": "605a0fe700abbb50fc6fd5ec6ff465bf85fd872ff66a873e0d9de4ad53f6716c"
   },
   "scripts_sha256": {
-    "run.py": "679173c46356117a94bd574eee0d6928fd8e5aef975708ef138f8477649baf16",
-    "analyze.py": "85f0bbf962b0cb59ce5f80a707985c40b86fa5dfcc5be17ce4d285f39626233f"
+    "run.py": "e479b5e65c4d44e338609d5620723251ea55653628ed92f689e82f0751ad608c",
+    "analyze.py": "29f5527c7ffa86d92ab4877a941db5aba0405e2594f8f7959a78654d85b567da"
   },
   "configurations": [
     {
@@ -91,6 +91,7 @@
   ],
   "bundle_signatures": false,
   "repeated_point_checks": false,
+  "dvrf_output": "G_T pairing projection, without an output hash",
   "execution": "Serial fresh processes; Setup and online calls use one thread. Preprocessing uses at most eight workers. Each sweep validates Setup once and visits all 21 configurations in seeded shuffled order. Every measured batch starts with empty PP-table caches and includes all public context/table preparation, fresh contributions/proofs, and worker creation/joining. Finalize checks all eight proof equations independently and aggregates all accepted contributions. Authentication, decoding, network and deadline waiting are excluded. Three representative online outputs are checked after every preprocessing configuration, outside its timers.",
   "aggregation": "Median across three process observations. Online observations are process medians of 30 calls after three warmups. Error ranges are process extrema."
 }

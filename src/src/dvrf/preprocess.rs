@@ -71,7 +71,6 @@ pub(crate) struct InputContext {
     pub tag: [u8; 32],
     pub h: G2Affine,
     pub transcript: merlin::Transcript,
-    pub output_prefix: Sha256,
 }
 pub struct ValidatedRecord {
     pub(crate) setup: Arc<ValidatedSetup>,
@@ -103,12 +102,7 @@ fn contexts_parallel(
             tag.update(b"SDVRF-INPUT-ID-v1");
             encoding::hash_field_header(&mut tag, b"data", len);
             tag.update(&prefix);
-            let mut output = Sha256::new();
-            encoding::hash_field_header(&mut output, b"domain", b"SDVRF-OUTPUT-v1".len());
-            output.update(b"SDVRF-OUTPUT-v1");
-            encoding::hash_field_header(&mut output, b"eta", len);
-            output.update(&prefix);
-            (tag, output)
+            tag
         });
     }
     let chunks: Vec<_> = s.labels.chunks(s.labels.len().div_ceil(workers)).collect();
@@ -122,21 +116,13 @@ fn contexts_parallel(
                 eta.truncate(prefix.len());
                 encoding::field(&mut eta, b"label", x);
                 let suffix = &eta[prefix.len()..];
-                let (tag_state, output_state) = &states[&x.len()];
-                let mut tag = tag_state.clone();
+                let mut tag = states[&x.len()].clone();
                 tag.update(suffix);
                 let tag = tag.finalize().into();
                 let h = encoding::hash_to_g2(&eta, b"SDVRF_GRP_BLS12381G2_XMD:SHA-256_SSWU_RO_V1")?;
                 let mut transcript = merlin::Transcript::new(b"SDVRF-IMAGE-FS-v1");
                 transcript.append_message(b"eta", &eta);
-                let mut output_prefix = output_state.clone();
-                output_prefix.update(suffix);
-                Ok(InputContext {
-                    tag,
-                    h,
-                    transcript,
-                    output_prefix,
-                })
+                Ok(InputContext { tag, h, transcript })
             })
             .collect::<Vec<_>>()
     })
@@ -541,16 +527,6 @@ mod tests {
                     encoding::challenge(&mut actual),
                     encoding::challenge(&mut reference)
                 );
-                let mut output = Vec::new();
-                encoding::field(&mut output, b"domain", b"SDVRF-OUTPUT-v1");
-                encoding::field(&mut output, b"eta", &eta);
-                let mut reference = Sha256::new();
-                reference.update(output);
-                // Verify the cached state remains equivalent after more data.
-                reference.update(b"synthetic-output");
-                let mut actual = input.output_prefix;
-                actual.update(b"synthetic-output");
-                assert_eq!(actual.finalize(), reference.finalize());
             }
         }
     }

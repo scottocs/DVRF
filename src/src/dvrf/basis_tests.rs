@@ -141,7 +141,6 @@ fn projection_recovers_the_independently_known_target() {
         },
         labels: vec![b"input".to_vec()],
     };
-    let mut target_exponent = Fr::from(0u64);
     let mut bundles = Vec::new();
     // Known coins are test-only. Two accepted images must add their fifth coins.
     for _ in 0..2 {
@@ -157,35 +156,42 @@ fn projection_recovers_the_independently_known_target() {
     let seed_bundle = contribute(&pp, &schedule, bundles[0].0, &mut rng).unwrap();
     let seed_record = finalize_record(pp.clone(), schedule.clone(), vec![seed_bundle]).unwrap();
     let context = seed_record.input(0).unwrap();
-    let mut board = Vec::new();
-    for (member, s) in bundles {
-        let nonce = std::array::from_fn(|_| Fr::rand(&mut rng));
-        let f = image(&pp, context.h, &s);
-        let commitment = image(&pp, context.h, &nonce);
-        let id = member;
-        let c = image_challenge(&context.transcript, id, &f, &commitment);
-        let b = Bundle {
-            member: id,
-            entries: vec![Contribution {
-                image: f,
-                proof: ImageProof {
-                    commitment,
-                    responses: std::array::from_fn(|i| nonce[i] + c * s[i]),
-                },
-            }],
-        };
-        target_exponent += s[4];
-        board.push(b);
-    }
-    let record = finalize_record(pp.clone(), schedule, board).unwrap();
-    let expected = E::pairing(pp.data().crs.g1[0], pp.data().crs.g2[0]) * target_exponent;
-    for indices in [[0, 1, 2, 3], [3, 4, 5, 6], [0, 2, 4, 6]] {
-        let shares: Vec<_> = indices
-            .iter()
-            .map(|i| partial_eval(&record, 0, &keys[*i]).unwrap())
-            .collect();
-        let e = combine(&record, 0, &shares).unwrap();
-        assert!(verify(&record, 0, &e));
-        assert_eq!(project(&record.data().images[0], &e.proof), expected);
+    for identity_output in [false, true] {
+        let mut target_exponent = Fr::from(0u64);
+        let mut board = Vec::new();
+        for (member, mut s) in bundles.iter().copied() {
+            if identity_output {
+                s[4] = Fr::from(0u64);
+            }
+            let nonce = std::array::from_fn(|_| Fr::rand(&mut rng));
+            let f = image(&pp, context.h, &s);
+            let commitment = image(&pp, context.h, &nonce);
+            let id = member;
+            let c = image_challenge(&context.transcript, id, &f, &commitment);
+            let b = Bundle {
+                member: id,
+                entries: vec![Contribution {
+                    image: f,
+                    proof: ImageProof {
+                        commitment,
+                        responses: std::array::from_fn(|i| nonce[i] + c * s[i]),
+                    },
+                }],
+            };
+            target_exponent += s[4];
+            board.push(b);
+        }
+        let record = finalize_record(pp.clone(), schedule.clone(), board).unwrap();
+        let expected = E::pairing(pp.data().crs.g1[0], pp.data().crs.g2[0]) * target_exponent;
+        for indices in [[0, 1, 2, 3], [3, 4, 5, 6], [0, 2, 4, 6]] {
+            let shares: Vec<_> = indices
+                .iter()
+                .map(|i| partial_eval(&record, 0, &keys[*i]).unwrap())
+                .collect();
+            let e = combine(&record, 0, &shares).unwrap();
+            assert!(verify(&record, 0, &e));
+            assert_eq!(project(&record.data().images[0], &e.proof), expected);
+            assert_eq!(e.output, expected);
+        }
     }
 }

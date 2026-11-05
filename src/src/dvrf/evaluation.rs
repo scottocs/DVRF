@@ -1,6 +1,6 @@
 use super::{
     algebra::{msm1, msm2, project, relation},
-    encoding, Error, Result, SecretKey, ValidatedRecord, Witness,
+    Error, Result, SecretKey, ValidatedRecord, Witness,
 };
 use ark_bls12_381::{Bls12_381 as E, Fr, G2Affine};
 use ark_ec::{
@@ -11,7 +11,6 @@ use ark_ff::{Field, One};
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, EvaluationDomain, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Valid};
 use ark_std::Zero;
-use sha2::Digest;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Share {
@@ -22,7 +21,7 @@ pub struct Share {
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Evaluation {
     pub tag: [u8; 32],
-    pub output: [u8; 32],
+    pub output: PairingOutput<E>,
     pub proof: Witness,
 }
 pub fn partial_eval(record: &ValidatedRecord, input: usize, key: &SecretKey) -> Result<Share> {
@@ -59,13 +58,6 @@ pub fn partial_verify(record: &ValidatedRecord, input: usize, share: &Share) -> 
         [context.h, share.value],
     )
     .is_zero()
-}
-fn output(record: &ValidatedRecord, index: usize, y: &PairingOutput<E>) -> Result<[u8; 32]> {
-    let mut t = record.input(index)?.output_prefix.clone();
-    let mut encoded = Vec::new();
-    encoding::field(&mut encoded, b"target", &encoding::bytes(y));
-    t.update(encoded);
-    Ok(t.finalize().into())
 }
 pub fn combine(record: &ValidatedRecord, input: usize, shares: &[Share]) -> Result<Evaluation> {
     let context = record.input(input)?;
@@ -154,10 +146,10 @@ pub fn combine(record: &ValidatedRecord, input: usize, shares: &[Share]) -> Resu
         ],
         g2: [pp.commit2(&b.coeffs)?, sigma.into_affine()],
     };
-    let y = project(&record.data().images[input], &proof);
+    let output = project(&record.data().images[input], &proof);
     Ok(Evaluation {
         tag: context.tag,
-        output: output(record, input, &y)?,
+        output,
         proof,
     })
 }
@@ -168,10 +160,6 @@ pub fn verify(record: &ValidatedRecord, input: usize, evaluation: &Evaluation) -
     if context.tag != evaluation.tag || !relation(record.setup(), context.h, &evaluation.proof) {
         return false;
     }
-    output(
-        record,
-        input,
-        &project(&record.data().images[input], &evaluation.proof),
-    )
-    .is_ok_and(|y| y == evaluation.output)
+    // Equality to a valid pairing product also rejects outputs outside G_T.
+    project(&record.data().images[input], &evaluation.proof) == evaluation.output
 }

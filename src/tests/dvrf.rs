@@ -1,6 +1,7 @@
-use ark_bls12_381::{Fr, G1Projective as G1, G2Projective as G2};
-use ark_ec::{CurveGroup, PrimeGroup};
+use ark_bls12_381::{Bls12_381, Fr, G1Projective as G1, G2Projective as G2};
+use ark_ec::{pairing::Pairing, CurveGroup, PrimeGroup};
 use ark_ff::One;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use rand::{rngs::StdRng, SeedableRng};
 use sdvrf::dvrf::*;
 use std::sync::Arc;
@@ -98,6 +99,12 @@ fn all_eight_coordinates_output_and_input_binding_are_checked() {
         .collect();
     let e = combine(&record, 0, &shares).unwrap();
     assert!(verify(&record, 0, &e));
+    let mut encoded = Vec::new();
+    e.serialize_compressed(&mut encoded).unwrap();
+    assert_eq!(encoded.len(), 1088);
+    let decoded = Evaluation::deserialize_compressed(encoded.as_slice()).unwrap();
+    assert_eq!(decoded, e);
+    assert!(verify(&record, 0, &decoded));
     assert!(!verify(&record, 1, &e));
     assert!(!verify(&record, 2, &e));
     for i in 0..6 {
@@ -111,7 +118,7 @@ fn all_eight_coordinates_output_and_input_binding_are_checked() {
         assert!(!verify(&record, 0, &bad));
     }
     let mut bad = e.clone();
-    bad.output[0] ^= 1;
+    bad.output += Bls12_381::pairing(G1::generator(), G2::generator());
     assert!(!verify(&record, 0, &bad));
     let mut bad = shares[0].clone();
     bad.value = (bad.value + G2::generator()).into_affine();

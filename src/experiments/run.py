@@ -48,6 +48,7 @@ def main():
         binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
         source_sha256=fingerprint(), scripts_sha256=script_fingerprint(),
         configurations=configurations(), bundle_signatures=False, repeated_point_checks=False,
+        dvrf_output='G_T pairing projection, without an output hash',
         execution='Serial fresh processes; Setup and online calls use one thread. '
                   'Preprocessing uses at most eight workers. Each sweep validates Setup once '
                   'and visits all 21 configurations in seeded shuffled order. Every measured '
